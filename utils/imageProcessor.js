@@ -1,27 +1,34 @@
 const sharp = require('sharp');
 const Tesseract = require('tesseract.js');
-const path = require('path');
 
-const processDocument = async (filePath) => {
-    try {
-        // Create a path for the cleaned version of the image
-        const cleanedPath = filePath.replace(path.extname(filePath), '-cleaned.png');
+const processImage = async (buffer) => {
+  try {
+    console.log('🖼️ Starting Sharp preprocessing...');
 
-        // PHASE 1: Image Enhancement (DIP)
-        await sharp(filePath)
-            .grayscale()       // Step 1: Grayscale
-            .sharpen()         // Step 2: Noise reduction/Sharpening
-            .threshold(128)    // Step 3: Black & White Thresholding
-            .toFile(cleanedPath);
+    const cleanedBuffer = await sharp(buffer)
+      .grayscale()
+      .normalize()
+      .sharpen({ sigma: 1.5 })
+      .png()
+      .toBuffer();
 
-        // PHASE 1: Local OCR Extraction
-        const { data: { text } } = await Tesseract.recognize(cleanedPath, 'eng');
-        
-        return { text, cleanedPath };
-    } catch (error) {
-        console.error("DIP Processing Error:", error);
-        throw error;
-    }
+    console.log('✅ Sharp done. Starting Tesseract OCR...');
+
+    const { data: { text } } = await Tesseract.recognize(cleanedBuffer, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          process.stdout.write(`\r🔍 OCR Progress: ${Math.round(m.progress * 100)}%`);
+        }
+      }
+    });
+
+    console.log('\n✅ OCR complete.');
+    return text;
+
+  } catch (error) {
+    console.error('❌ Image processing failed:', error.message);
+    throw new Error('Image processing failed: ' + error.message);
+  }
 };
 
-module.exports = { processDocument };
+module.exports = { processImage };
