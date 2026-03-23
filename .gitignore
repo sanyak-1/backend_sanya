@@ -1,4 +1,28 @@
+# Node modules
 node_modules/
+
+# Environment variables
 .env
-uploads/
+
+# Logs
 *.log
+npm-debug.log*
+
+# Uploads (generated files)
+uploads/
+
+# Python virtual environment
+python_env/
+venv/
+__pycache__/
+*.pyc
+
+# AI / ML models (heavy files)
+easyocr_models/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code settings (optional)
+.vscode/

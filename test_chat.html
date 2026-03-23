@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DocuMind — Chat Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    h1 { color: #7c3aed; }
+    .box {
+      background: #1e293b;
+      padding: 24px;
+      border-radius: 12px;
+      margin-top: 20px;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 14px;
+    }
+    button {
+      background: #7c3aed;
+      color: white;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover { background: #6d28d9; }
+    #result {
+      margin-top: 20px;
+      background: #0f172a;
+      padding: 16px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      font-size: 14px;
+      border: 1px solid #334155;
+      min-height: 100px;
+      line-height: 1.5;
+    }
+    .confidence-high { color: #10b981; font-weight: bold; }
+    .confidence-medium { color: #f59e0b; font-weight: bold; }
+    .confidence-low { color: #ef4444; font-weight: bold; }
+    
+    /* Styling for the RAG flex */
+    .rag-stats {
+      margin-top: 15px;
+      padding: 12px;
+      background: #1e293b;
+      border-left: 4px solid #3b82f6;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    .rag-stats span {
+      color: #38bdf8;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>💬 DocuMind Interactive Chat</h1>
+  <p>Ask RAG-powered questions about your uploaded documents.</p>
+
+  <div class="box">
+    <label>Document ID:</label>
+    <input type="text" id="documentId" placeholder="Paste your MongoDB ID here..." />
+
+    <label>Your Question:</label>
+    <textarea id="question" rows="3" placeholder="e.g., What was the total order amount for Callahan in the USA?"></textarea>
+
+    <button onclick="askQuestion()">Ask Document</button>
+  </div>
+
+  <div id="result">Results will appear here...</div>
+
+<script>
+  async function askQuestion() {
+    const documentId = document.getElementById('documentId').value.trim();
+    const question = document.getElementById('question').value.trim();
+    const result = document.getElementById('result');
+
+    if (!documentId || !question) {
+      result.textContent = '⚠️ Please provide both Document ID and Question';
+      return;
+    }
+
+    result.textContent = '⏳ Searching document and asking Groq AI...';
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId, question }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const confidenceClass = data.confidence >= 80 ? 'confidence-high'
+                               : data.confidence >= 50 ? 'confidence-medium'
+                               : 'confidence-low';
+
+        // 🚀 THE FIX: Handle both Cache Hits and Fresh RAG queries
+        let ragHtml = '';
+        if (data.ragMetrics) {
+          if (data.ragMetrics.cached) {
+            // It was a Cache Hit!
+            ragHtml = `
+              <div class="rag-stats" style="border-left-color: #10b981;">
+                <strong>🚀 Q&A Cache Hit!</strong><br>
+                Answer retrieved instantly from MongoDB.<br>
+                API Tokens Used: <span style="color: #10b981;">0</span><br>
+                Estimated Token Savings: <span style="color: #10b981;">100%</span>
+              </div>
+            `;
+          } else {
+            // It was a Fresh RAG Query!
+            const { nodesSearched, nodesRetrieved } = data.ragMetrics;
+            const percentSaved = nodesSearched > 0 
+              ? Math.round((1 - (nodesRetrieved / nodesSearched)) * 100) 
+              : 0;
+
+            ragHtml = `
+              <div class="rag-stats">
+                <strong>⚡ Lexical RAG Optimization</strong><br>
+                Total Document Nodes: <span>${nodesSearched}</span><br>
+                Relevant Nodes Retrieved: <span>${nodesRetrieved}</span><br>
+                Estimated Token Savings: <span>${percentSaved}%</span>
+              </div>
+            `;
+          }
+        }
+
+        result.innerHTML = `
+<strong>Question:</strong> ${data.question}
+
+<strong>Answer:</strong> ${data.answer}
+
+<strong>Confidence:</strong> <span class="${confidenceClass}">${data.confidence}%</span>
+
+<strong>Source Quote:</strong>
+"${data.sourceQuote}"
+
+<strong>Document:</strong> ${data.documentName}
+${ragHtml}
+        `;
+      } else {
+        result.textContent = `❌ Error: ${data.error}`;
+      }
+
+    } catch (err) {
+      result.textContent = `❌ Could not reach server: ${err.message}`;
+    }
+  }
+</script>
+
+</body>
+</html>

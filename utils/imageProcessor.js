@@ -1,32 +1,31 @@
-const sharp = require('sharp');
-const Tesseract = require('tesseract.js');
+const { runPythonOCR } = require('./pythonBridge');
+// 🚀 NEW: Import the EasyOCR table processor
+const { processTablesWithEasyOCR } = require('./tableProcessor'); 
 
-const processImage = async (buffer) => {
+const processImage = async (buffer, originalName = 'upload.png') => {
   try {
-    console.log('🖼️ Starting Sharp preprocessing...');
+    console.log('🐍 Routing to Python Vision Pipeline...');
+    
+    // 1. Run the main OCR (EasyOCR pure-python version)
+    const ocrResult = await runPythonOCR(buffer, originalName);
 
-    const cleanedBuffer = await sharp(buffer)
-      .grayscale()
-      .normalize()
-      .sharpen({ sigma: 1.5 })
-      .png()
-      .toBuffer();
+    // 2. 🚀 NEW: Check if the Python script detected any tables
+    if (ocrResult.pages && ocrResult.pages[0] && ocrResult.pages[0].tables && ocrResult.pages[0].tables.length > 0) {
+      const tables = ocrResult.pages[0].tables;
+      const words = ocrResult.pages[0].words || []; // 🚀 Grab all the words EasyOCR found
 
-    console.log('✅ Sharp done. Starting Tesseract OCR...');
+      console.log(`📊 Formatting ${tables.length} table(s) using EasyOCR coordinates...`);
 
-    const { data: { text } } = await Tesseract.recognize(cleanedBuffer, 'eng', {
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          process.stdout.write(`\r🔍 OCR Progress: ${Math.round(m.progress * 100)}%`);
-        }
-      }
-    });
+      // 🚀 NEW: Pass BOTH tables and words to the spatial math processor
+      const processedTables = await processTablesWithEasyOCR(tables, words);
+      
+      // Update the result with the refined table data
+      ocrResult.pages[0].tables = processedTables;
+    }
 
-    console.log('\n✅ OCR complete.');
-    return text;
-
+    return ocrResult;
   } catch (error) {
-    console.error('❌ Image processing failed:', error.message);
+    console.error('❌ Python Vision Pipeline failed:', error.message);
     throw new Error('Image processing failed: ' + error.message);
   }
 };
